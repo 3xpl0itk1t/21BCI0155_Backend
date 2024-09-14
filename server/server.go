@@ -45,6 +45,8 @@ func StartServer() {
 	protected.Post("/upload", handlers.UploadHandler)
 	protected.Get("/files", handlers.GetFilesHandler)
 	protected.Get("/share/:file_id", handlers.ShareFileHandler)
+	protected.Get("/search", handlers.SearchFilesHandler)
+
 	go func() {
 		err := app.Listen(":" + PORT)
 		if err != nil {

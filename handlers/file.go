@@ -196,3 +196,68 @@ func ShareFileHandler(c *fiber.Ctx) error {
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"share_url": objectKey})
 }
+
+func SearchFilesHandler(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	name := c.Query("name")
+	date := c.Query("date")
+	limit := c.QueryInt("limit", 10)  // Default limit
+	offset := c.QueryInt("offset", 0) // Default offset
+
+	query := `SELECT file_id, filename, upload_date, s3_url FROM files WHERE user_id = $1`
+	params := []interface{}{userID}
+
+	paramIndex := 2
+
+	if name != "" {
+		query += fmt.Sprintf(` AND filename =$%d`, paramIndex)
+		params = append(params, name)
+		paramIndex++
+	}
+	if date != "" {
+		query += fmt.Sprintf(` AND upload_date::date = $%d`, paramIndex)
+		params = append(params, date)
+		paramIndex++
+	}
+
+	query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, paramIndex, paramIndex+1)
+	params = append(params, limit, offset)
+
+	// log.Printf("Executing query: %s\n", query)
+	// log.Printf("Params: %+v\n", params)
+
+	// Connect to the database
+	conn, err := pgx.Connect(context.Background(), getPostgresURL())
+	if err != nil {
+		log.Println("Database Connection Error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database connection error"})
+	}
+	defer conn.Close(context.Background())
+
+	// Execute the query
+	rows, err := conn.Query(context.Background(), query, params...)
+	if err != nil {
+		log.Println("Database Query Error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database query error"})
+	}
+	defer rows.Close()
+
+	// Scan the results
+	files := []fiber.Map{}
+	for rows.Next() {
+		var fileID, filename, s3URL string
+		var uploadDate time.Time
+		if err := rows.Scan(&fileID, &filename, &uploadDate, &s3URL); err != nil {
+			log.Println("Database Scan Error:", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database scan error"})
+		}
+		files = append(files, fiber.Map{
+			"file_id":     fileID,
+			"filename":    filename,
+			"upload_date": uploadDate,
+			"s3_url":      s3URL,
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(files)
+}
