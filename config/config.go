@@ -19,4 +19,5 @@ var (
 	PG_USER                      = os.Getenv("PG_USER")
 	PG_PASSWORD                  = os.Getenv("PG_PASSWORD")
 	PG_DBNAME                    = os.Getenv("PG_DBNAME")
+	REDIS_ADDR                   = os.Getenv("RE_ADDR")
 )

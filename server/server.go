@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 	"trademarkia/handlers"
+	"trademarkia/middlewares"
 
 	"trademarkia/config"
 
@@ -29,8 +30,7 @@ func StartServer() {
 	app := fiber.New()
 
 	app.Use(logger.New())
-	// protect := middlewares.AuthMiddleware()
-	// Routes
+	// Public Routes
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"message": "Hello, world!",
@@ -38,8 +38,13 @@ func StartServer() {
 	})
 	app.Post("/register", handlers.SignupHandler)
 	app.Post("/login", handlers.LoginHandler)
-	app.Post("/upload", handlers.UploadHandler)
 
+	// Protected Routes
+	protected := app.Group("/", middlewares.AuthMiddleware)
+
+	protected.Post("/upload", handlers.UploadHandler)
+	protected.Get("/files", handlers.GetFilesHandler)
+	protected.Get("/share/:file_id", handlers.ShareFileHandler)
 	go func() {
 		err := app.Listen(":" + PORT)
 		if err != nil {
