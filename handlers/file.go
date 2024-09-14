@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
@@ -204,29 +206,100 @@ func SearchFilesHandler(c *fiber.Ctx) error {
 	limit := c.QueryInt("limit", 10)  // Default limit
 	offset := c.QueryInt("offset", 0) // Default offset
 
-	query := `SELECT file_id, filename, upload_date, s3_url FROM files WHERE user_id = $1`
-	params := []interface{}{userID}
+	// Format cache key
+	cacheKey := fmt.Sprintf("files:%s:%s:%s:%d:%d", userID, name, date, limit, offset)
+	fmt.Printf("Cache Key: %s\n", cacheKey)
 
-	paramIndex := 2
+	// Attempt to retrieve from cache
+	cachedData, err := RedisClient.Get(context.Background(), cacheKey).Result()
+	if err != redis.Nil {
+		fmt.Println("Cache miss, querying database...")
 
-	if name != "" {
-		query += fmt.Sprintf(` AND filename =$%d`, paramIndex)
-		params = append(params, name)
-		paramIndex++
+		// Prepare SQL query
+		var query string
+		params := []interface{}{userID}
+		paramIndex := 2
+
+		query = `SELECT file_id, filename, upload_date, s3_url FROM files WHERE user_id = $1`
+
+		if name != "" {
+			query += fmt.Sprintf(` AND filename ILIKE $%d`, paramIndex)
+			params = append(params, "%"+name+"%")
+			paramIndex++
+		}
+		if date != "" {
+			query += fmt.Sprintf(` AND upload_date::date = $%d`, paramIndex)
+			params = append(params, date)
+			paramIndex++
+		}
+		if limit > 0 {
+			query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, paramIndex, paramIndex+1)
+			params = append(params, limit, offset)
+		}
+
+		// Connect to database
+		conn, err := pgx.Connect(context.Background(), getPostgresURL())
+		if err != nil {
+			log.Println("Database Connection Error:", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database connection error"})
+		}
+		defer conn.Close(context.Background())
+
+		// Execute query
+		rows, err := conn.Query(context.Background(), query, params...)
+		if err != nil {
+			log.Println("Database Query Error:", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database query error"})
+		}
+		defer rows.Close()
+
+		// Collect results
+		files := []fiber.Map{}
+		for rows.Next() {
+			var fileID, filename, s3URL string
+			var uploadDate time.Time
+			if err := rows.Scan(&fileID, &filename, &uploadDate, &s3URL); err != nil {
+				log.Println("Database Scan Error:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database scan error"})
+			}
+			files = append(files, fiber.Map{
+				"file_id":     fileID,
+				"filename":    filename,
+				"upload_date": uploadDate,
+				"s3_url":      s3URL,
+			})
+		}
+
+		// Cache result
+		filesJSON, _ := json.Marshal(files)
+		err = RedisClient.Set(context.Background(), cacheKey, filesJSON, 5*time.Minute).Err()
+		if err != nil {
+			log.Println("Error setting cache:", err)
+		} else {
+			fmt.Println("Data cached successfully.")
+		}
+
+		return c.Status(fiber.StatusOK).JSON(files)
+	} else if err != nil {
+		log.Println("Redis Error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Redis error"})
+	} else {
+		fmt.Println("Cache hit, returning cached data...")
+		var files []fiber.Map
+		err = json.Unmarshal([]byte(cachedData), &files)
+		if err != nil {
+			log.Println("Error unmarshalling cache data:", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Cache data error"})
+		}
+		return c.Status(fiber.StatusOK).JSON(files)
 	}
-	if date != "" {
-		query += fmt.Sprintf(` AND upload_date::date = $%d`, paramIndex)
-		params = append(params, date)
-		paramIndex++
-	}
+}
 
-	query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, paramIndex, paramIndex+1)
-	params = append(params, limit, offset)
+func UpdateFileMetadataHandler(c *fiber.Ctx) error {
+	fileID := c.Params("file_id")
+	newName := c.Query("name")
 
-	// log.Printf("Executing query: %s\n", query)
-	// log.Printf("Params: %+v\n", params)
-
-	// Connect to the database
+	// Update metadata in the database
 	conn, err := pgx.Connect(context.Background(), getPostgresURL())
 	if err != nil {
 		log.Println("Database Connection Error:", err)
@@ -234,30 +307,20 @@ func SearchFilesHandler(c *fiber.Ctx) error {
 	}
 	defer conn.Close(context.Background())
 
-	// Execute the query
-	rows, err := conn.Query(context.Background(), query, params...)
+	_, err = conn.Exec(context.Background(), `UPDATE files SET filename = $1 WHERE file_id = $2`, newName, fileID)
 	if err != nil {
-		log.Println("Database Query Error:", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database query error"})
+		log.Println("Database Update Error:", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to update file metadata"})
 	}
-	defer rows.Close()
 
-	// Scan the results
-	files := []fiber.Map{}
-	for rows.Next() {
-		var fileID, filename, s3URL string
-		var uploadDate time.Time
-		if err := rows.Scan(&fileID, &filename, &uploadDate, &s3URL); err != nil {
-			log.Println("Database Scan Error:", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Database scan error"})
+	// Invalidate the cache
+	cacheKey := fmt.Sprintf("files:*:*:*:*:*") // Pattern to invalidate all cache for this user
+	keys, err := RedisClient.Keys(context.Background(), cacheKey).Result()
+	if err == nil {
+		for _, key := range keys {
+			RedisClient.Del(context.Background(), key)
 		}
-		files = append(files, fiber.Map{
-			"file_id":     fileID,
-			"filename":    filename,
-			"upload_date": uploadDate,
-			"s3_url":      s3URL,
-		})
 	}
 
-	return c.Status(fiber.StatusOK).JSON(files)
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "File metadata updated successfully"})
 }
