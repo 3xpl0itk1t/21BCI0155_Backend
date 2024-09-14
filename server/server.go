@@ -20,8 +20,10 @@ func StartServer() {
 		log.Fatal(err)
 	}
 
-	handlers.ConnectToDB()
-	defer handlers.DisconnectFromDB()
+	handlers.ConnectToPostgres()
+	handlers.ConnectToMongoDB()
+	defer handlers.DisconnectFromMongoDB()
+	defer handlers.DisconnectFromPostgres()
 
 	PORT := config.PORT
 	app := fiber.New()
@@ -48,5 +50,6 @@ func StartServer() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	handlers.DisconnectFromDB()
+	handlers.DisconnectFromMongoDB()
+	handlers.DisconnectFromPostgres()
 }
