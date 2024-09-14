@@ -29,7 +29,7 @@ func StartServer() {
 	app := fiber.New()
 
 	app.Use(logger.New())
-
+	// protect := middlewares.AuthMiddleware()
 	// Routes
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -38,7 +38,8 @@ func StartServer() {
 	})
 	app.Post("/register", handlers.SignupHandler)
 	app.Post("/login", handlers.LoginHandler)
-	// app.Post("/upload", handlers.UploadFile)
+	app.Post("/upload", handlers.UploadHandler)
+
 	go func() {
 		err := app.Listen(":" + PORT)
 		if err != nil {
