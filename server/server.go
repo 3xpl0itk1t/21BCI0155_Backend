@@ -6,11 +6,13 @@ import (
 	"os/signal"
 	"syscall"
 	"trademarkia/handlers"
+	"trademarkia/jobs"
 	"trademarkia/middlewares"
 
 	"trademarkia/config"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 )
@@ -20,16 +22,24 @@ func StartServer() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	// Connections
 	handlers.ConnectToPostgres()
 	handlers.ConnectToMongoDB()
+	handlers.ConnectToS3()
+
+	// Defer disconnecting from the connections when shutdown
 	defer handlers.DisconnectFromMongoDB()
 	defer handlers.DisconnectFromPostgres()
+	defer handlers.DisconnectFromS3()
+
+	go jobs.StartFileDeletionJob(handlers.PostgresDB, handlers.S3Client)
 
 	PORT := config.PORT
 	app := fiber.New()
 
 	app.Use(logger.New())
+	app.Use(cors.New())
+
 	// Public Routes
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -58,6 +68,8 @@ func StartServer() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
+	// Disconnect from the connections
 	handlers.DisconnectFromMongoDB()
 	handlers.DisconnectFromPostgres()
+	handlers.DisconnectFromS3()
 }

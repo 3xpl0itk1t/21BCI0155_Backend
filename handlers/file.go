@@ -12,24 +12,12 @@ import (
 	"trademarkia/config"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/go-redis/redis"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4"
 )
-
-var s3Client *s3.Client
-
-func init() {
-	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(), awsconfig.WithRegion(config.AWS_REGION))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	s3Client = s3.NewFromConfig(cfg)
-}
 
 func UploadHandler(c *fiber.Ctx) error {
 	log.Println("UploadHandler called")
@@ -108,7 +96,7 @@ func UploadHandler(c *fiber.Ctx) error {
 }
 
 func uploadChunkToS3(chunk []byte, fileID string) error {
-	_, err := s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+	_, err := S3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(config.S3_BUCKET),
 		Key:    aws.String(fileID),
 		Body:   bytes.NewReader(chunk),
