@@ -1,4 +1,2 @@
 .env
 files
-Dockerfile
-docker-compose.yml

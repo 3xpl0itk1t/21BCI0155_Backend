@@ -1,0 +1,19 @@
+/.mod
+/.sum
+/bin
+/build
+/*.out
+/*.exe
+/*.test
+/*.log
+*.tmp
+*.swp
+*.swo
+*.DS_Store
+*.git
+.gitignore
+*.md
+
+# Ignore Docker-specific files
+Dockerfile
+docker-compose.yml
