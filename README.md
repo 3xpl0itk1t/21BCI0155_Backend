@@ -161,10 +161,10 @@ curl --location --request GET 'http://13.51.204.39:8000/search?name=check.jpg&da
 
 ### Running the Project
 
-**Start the Go Fiber application:**
+**Start the Application:**
 
 ```bash
-go run main.go
+docker-compose up --build
 ```
 
 **Ensure Nginx is properly set up to proxy requests to the Go Fiber app:**
