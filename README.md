@@ -167,13 +167,7 @@ curl --location --request GET 'http://13.51.204.39:8000/search?name=check.jpg&da
 docker-compose up --build
 ```
 
-**Ensure Nginx is properly set up to proxy requests to the Go Fiber app:**
-
-```bash
-sudo systemctl reload nginx
-```
-
-**Use Postman or curl to send requests to your API.**
+**Use Postman or curl to send requests to my API.**
 
 ### License
 
