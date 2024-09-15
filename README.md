@@ -2,6 +2,9 @@
 
 This document provides an overview of the API endpoints available for the TradeMarkia backend.
 
+
+[<img src="https://run.pstmn.io/button.svg" alt="Run In Postman" style="width: 128px; height: 32px;">](https://god.gw.postman.com/run-collection/25976453-23f6155d-c6ac-4e9a-abf5-ea2c10d02565?action=collection%2Ffork&source=rip_markdown&collection-url=entityId%3D25976453-23f6155d-c6ac-4e9a-abf5-ea2c10d02565%26entityType%3Dcollection%26workspaceId%3D2273b065-77b7-4c9e-bc25-bcf0749ee27d)
+
 ### Base URL
 
 The base URL for all endpoints is:
