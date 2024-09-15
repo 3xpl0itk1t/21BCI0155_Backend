@@ -34,7 +34,6 @@ Registers a new user.
 
 ```bash
 curl --location --request POST 'http://13.51.204.39:8000/register' \
---header 'auth-token: your-auth-token' \
 --header 'Content-Type: application/json' \
 --data-raw '{
   "email": "prabhavmishra7@gmail.com",
@@ -51,10 +50,24 @@ Log in and get a JWT token.
 
 **Endpoint:** /login
 
+**Request Body (JSON):**
+
+```json
+{
+  "email": "prabhavmishra7@gmail.com",
+  "password": "prabhavg"
+}
+```
+
 **Example using curl:**
 
 ```bash
-curl --location --request POST 'http://13.51.204.39:8000/login'
+curl --location --request POST 'http://13.51.204.39:8000/login' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "email": "prabhavmishra7@gmail.com",
+  "password": "prabhavg"
+}'
 ```
 
 #### File Upload
